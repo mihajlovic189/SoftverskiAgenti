@@ -1,0 +1,11 @@
+{
+  "node_id": "smart-meter-substation-4",
+  "readings": [
+    {"timestamp": "2026-06-11T01:00:00Z", "consumption_kwh": 20.0},
+    {"timestamp": "2026-06-11T02:00:00Z", "consumption_kwh": 22.0},
+    {"timestamp": "2026-06-11T03:00:00Z", "consumption_kwh": 24.0},
+    {"timestamp": "2026-06-11T04:00:00Z", "consumption_kwh": 26.0},
+    {"timestamp": "2026-06-11T05:00:00Z", "consumption_kwh": 28.0},
+    {"timestamp": "2026-06-11T06:00:00Z", "consumption_kwh": 30.0}
+  ]
+}

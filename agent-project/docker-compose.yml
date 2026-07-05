@@ -1,0 +1,49 @@
+networks:
+  fl-network:
+    driver: bridge
+
+services:
+  aggregator:
+    build: .
+    container_name: fl-aggregator
+    networks:
+      - fl-network
+    command: ["--role=aggregator", "--listen-addr=0.0.0.0:8080", "--public-addr=aggregator:8080"]
+    ports:
+      - "8080:8080"
+
+  trainer1:
+    build: .
+    container_name: fl-trainer1
+    networks:
+      - fl-network
+    depends_on:
+      - aggregator
+    command: ["--role=trainer", "--file=data/node1.json", "--listen-addr=0.0.0.0:9090", "--public-addr=trainer1:9090", "--agg-addr=aggregator:8080"]
+
+  trainer2:
+    build: .
+    container_name: fl-trainer2
+    networks:
+      - fl-network
+    depends_on:
+      - aggregator
+    command: ["--role=trainer", "--file=data/node2.json", "--listen-addr=0.0.0.0:9091", "--public-addr=trainer2:9091", "--agg-addr=aggregator:8080"]
+
+  trainer3:
+    build: .
+    container_name: fl-trainer3
+    networks:
+      - fl-network
+    depends_on:
+      - aggregator
+    command: ["--role=trainer", "--file=data/node3.json", "--listen-addr=0.0.0.0:9092", "--public-addr=trainer3:9092", "--agg-addr=aggregator:8080"]
+
+  trainer4:
+    build: .
+    container_name: fl-trainer4
+    networks:
+      - fl-network
+    depends_on:
+      - aggregator
+    command: ["--role=trainer", "--file=data/node4.json", "--listen-addr=0.0.0.0:9093", "--public-addr=trainer4:9093", "--agg-addr=aggregator:8080"]
