@@ -3,7 +3,8 @@ package federated_learning
 import "agent-project/actor_framework"
 
 type StartTrainingEpoch struct {
-	Round int
+	Round       int
+	TotalRounds int
 }
 
 type GlobalModelBroadcast struct {
@@ -12,8 +13,9 @@ type GlobalModelBroadcast struct {
 }
 
 type CalculateLocalMetrics struct {
-	FilePath string
-	Round    int
+	FilePath    string
+	Round       int
+	TotalRounds int
 }
 
 type LocalMetricsUpdate struct {

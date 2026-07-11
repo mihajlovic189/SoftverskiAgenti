@@ -170,3 +170,9 @@ type ChildStarted struct {
 type Restart struct{}
 
 type Stop struct{}
+
+type DeadLetter struct {
+	Target   *PID
+	Sender   *PID
+	Original interface{}
+}

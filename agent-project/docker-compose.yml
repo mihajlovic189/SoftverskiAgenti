@@ -2,13 +2,18 @@ networks:
   fl-network:
     driver: bridge
 
+volumes:
+  agg-state:
+
 services:
   aggregator:
     build: .
     container_name: fl-aggregator
     networks:
       - fl-network
-    command: ["--role=aggregator", "--listen-addr=0.0.0.0:8080", "--public-addr=aggregator:8080"]
+    command: ["--role=aggregator", "--listen-addr=0.0.0.0:8080", "--public-addr=aggregator:8080", "--expected-nodes=4", "--state-file=/app/state/aggregator_state.json"]
+    volumes:
+      - agg-state:/app/state
     ports:
       - "8080:8080"
 

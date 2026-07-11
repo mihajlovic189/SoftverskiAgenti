@@ -66,8 +66,15 @@ func (s *ActorSystem) localSend(pid *PID, message interface{}, sender *PID) {
 
 	if ok {
 		ref.Send(message, sender)
-	} else {
-		fmt.Printf("[ActorSystem] Greška: Lokalni aktor %s nije pronađen!\n", pid.ID)
+		return
+	}
+
+	fmt.Printf("[ActorSystem] Greška: Lokalni aktor %s nije pronađen! Poruka %T odbačena (dead letter).\n", pid.ID, message)
+
+	if sender != nil {
+		if _, isDeadLetter := message.(DeadLetter); !isDeadLetter {
+			s.Send(sender, DeadLetter{Target: pid, Sender: sender, Original: message}, nil)
+		}
 	}
 }
 

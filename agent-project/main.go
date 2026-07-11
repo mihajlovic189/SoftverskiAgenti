@@ -15,6 +15,9 @@ func main() {
 	publicAddr := flag.String("public-addr", "localhost:8080", "Javna adresa koju drugi čvorovi koriste da nas kontaktiraju")
 
 	aggAddress := flag.String("agg-addr", "localhost:8080", "Mrežna adresa agregatora")
+
+	expectedNodes := flag.Int("expected-nodes", 4, "Broj trenera koje agregator čeka pre pokretanja treninga (samo za aggregator)")
+	stateFile := flag.String("state-file", "aggregator_state.json", "Putanja gde agregator čuva stanje runde radi oporavka posle pada (samo za aggregator)")
 	flag.Parse()
 
 	if *role == "" {
@@ -30,8 +33,10 @@ func main() {
 
 		system := actor_framework.NewActorSystem(*publicAddr)
 
+		aggActor := federated_learning.NewClusterAggregatorActor(*expectedNodes, *stateFile)
+
 		props := actor_framework.NewProps(func() actor_framework.Actor {
-			return federated_learning.NewClusterAggregatorActor()
+			return aggActor
 		})
 
 		aggregatorPID := system.SpawnNamed(props, fixedAggregatorID)

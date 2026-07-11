@@ -23,6 +23,7 @@ func init() {
 	gob.Register(ChildStarted{})
 	gob.Register(Restart{})
 	gob.Register(Stop{})
+	gob.Register(DeadLetter{})
 }
 
 func (s *ActorSystem) handleConnection(conn net.Conn) {

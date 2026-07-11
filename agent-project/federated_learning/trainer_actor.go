@@ -13,13 +13,15 @@ type WorkerTimeout struct {
 }
 
 type FederatedTrainerActor struct {
-	filePath          string
-	workerPID         *actor_framework.PID
-	currentAggregator *actor_framework.PID
-	localModelWeight  float64
-	currentRound      int
-	workerGeneration  int
-	retryCount        int
+	filePath           string
+	workerPID          *actor_framework.PID
+	currentAggregator  *actor_framework.PID
+	localModelWeight   float64
+	currentRound       int
+	totalRounds        int
+	workerGeneration   int
+	retryCount         int
+	workerTimeoutTimer *time.Timer
 }
 
 func NewFederatedTrainerActor(filePath string) actor_framework.Actor {
@@ -45,6 +47,7 @@ func (a *FederatedTrainerActor) receiveIdle(ctx actor_framework.Context) {
 		}
 
 		a.currentRound = msg.Round
+		a.totalRounds = msg.TotalRounds
 		a.currentAggregator = ctx.Sender()
 		a.retryCount = 0
 
@@ -68,10 +71,26 @@ func (a *FederatedTrainerActor) receiveIdle(ctx actor_framework.Context) {
 func (a *FederatedTrainerActor) receiveTraining(ctx actor_framework.Context) {
 	switch msg := ctx.Message().(type) {
 
+	case StartTrainingEpoch:
+		if msg.Round > a.currentRound {
+			log.Printf("[Trainer %s] Agregator je prešao na RUNDU %d dok sam još obrađivao RUNDU %d. Napuštam zaostalu rundu i sinhronizujem se.\n",
+				ctx.Self().ID, msg.Round, a.currentRound)
+
+			a.stopWorkerTimeoutTimer()
+
+			a.currentRound = msg.Round
+			a.totalRounds = msg.TotalRounds
+			a.currentAggregator = ctx.Sender()
+			a.retryCount = 0
+
+			a.startWorkerWithSupervision(ctx)
+		}
+
 	case LocalMetricsUpdate:
 		if ctx.Sender() != nil && a.workerPID != nil && ctx.Sender().String() == a.workerPID.String() {
 
 			log.Printf("[Trainer %s] Radnik uspešno završio u roku. Gasim nadzorni tajmer.\n", ctx.Self().ID)
+			a.stopWorkerTimeoutTimer()
 			a.workerGeneration++
 
 			if a.currentAggregator == nil {
@@ -163,17 +182,24 @@ func (a *FederatedTrainerActor) startWorkerWithSupervision(ctx actor_framework.C
 	currentGen := a.workerGeneration
 
 	ctx.Send(a.workerPID, CalculateLocalMetrics{
-		FilePath: a.filePath,
-		Round:    a.currentRound,
+		FilePath:    a.filePath,
+		Round:       a.currentRound,
+		TotalRounds: a.totalRounds,
 	})
 
 	selfPID := ctx.Self()
 	currentRound := a.currentRound
 
-	time.AfterFunc(5*time.Second, func() {
+	a.workerTimeoutTimer = time.AfterFunc(5*time.Second, func() {
 		ctx.Send(selfPID, WorkerTimeout{
 			Round:      currentRound,
 			Generation: currentGen,
 		})
 	})
+}
+
+func (a *FederatedTrainerActor) stopWorkerTimeoutTimer() {
+	if a.workerTimeoutTimer != nil {
+		a.workerTimeoutTimer.Stop()
+	}
 }

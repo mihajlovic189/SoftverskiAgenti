@@ -50,7 +50,7 @@ func (a *DataWorkerActor) Receive(ctx actor_framework.Context) {
 			return
 		}
 
-		pageSize := totalReadings / 3
+		pageSize := totalReadings / msg.TotalRounds
 		if pageSize == 0 {
 			pageSize = 1
 		}
@@ -58,7 +58,7 @@ func (a *DataWorkerActor) Receive(ctx actor_framework.Context) {
 		startIdx := (msg.Round - 1) * pageSize
 		endIdx := startIdx + pageSize
 
-		if msg.Round == 3 || endIdx > totalReadings {
+		if msg.Round == msg.TotalRounds || endIdx > totalReadings {
 			endIdx = totalReadings
 		}
 
