@@ -25,7 +25,7 @@ func main() {
 	const fixedAggregatorID = "central-aggregator"
 
 	if *role == "aggregator" {
-		fmt.Printf("--- Pokretanje Čvora: CENTRALNI AGREGATOR ---\n")
+		fmt.Printf("Pokretanje Čvora: CENTRALNI AGREGATOR\n")
 		fmt.Printf("-> Slušam na: %s, Identifikujem se kao: %s\n", *listenAddr, *publicAddr)
 
 		system := actor_framework.NewActorSystem(*publicAddr)
@@ -51,7 +51,7 @@ func main() {
 			return
 		}
 
-		fmt.Printf("--- Pokretanje Čvora: TRAINER (%s) ---\n", *publicAddr)
+		fmt.Printf("Pokretanje Čvora: TRAINER (%s)\n", *publicAddr)
 
 		system := actor_framework.NewActorSystem(*publicAddr)
 

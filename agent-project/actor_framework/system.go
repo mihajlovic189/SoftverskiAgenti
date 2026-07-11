@@ -29,18 +29,34 @@ func (s *ActorSystem) Address() string {
 }
 
 func (s *ActorSystem) Spawn(props *Props) *PID {
+	return s.SpawnChild(props, nil)
+}
+
+func (s *ActorSystem) SpawnChild(props *Props, parent *PID) *PID {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	id := uuid.New().String()
 	pid := NewPID(s.address, id)
+	pid.Parent = parent
 
 	proc := newProcess(pid, props, s)
 	s.registry[id] = proc
 
 	proc.start()
 
+	s.mu.Unlock()
+
+	if parent != nil {
+		s.Send(parent, ChildStarted{Child: pid}, pid)
+	}
+
 	return pid
+}
+
+func (s *ActorSystem) unregister(pid *PID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.registry, pid.ID)
 }
 
 func (s *ActorSystem) localSend(pid *PID, message interface{}, sender *PID) {

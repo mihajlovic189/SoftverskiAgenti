@@ -40,16 +40,9 @@ func (a *ClusterAggregatorActor) Receive(ctx actor_framework.Context) {
 		fmt.Printf("[Aggregator] Registrovan novi trener: %s (Ukupno: %d/4)\n", msg.TrainerPID.String(), len(a.trainers))
 
 		if len(a.trainers) == 4 {
-			fmt.Println("\n========================================================")
 			fmt.Printf("[Aggregator] SVI ČVOROVI PRISUTNI (4/4)! Pokrećem Federated Learning proces...\n")
-			fmt.Println("========================================================")
 
 			a.startRound(ctx, 1)
-		}
-
-	case StartTrainingEpoch:
-		if msg.Round > 1 {
-			a.startRound(ctx, msg.Round)
 		}
 
 	case LocalMetricsUpdate:
@@ -88,7 +81,7 @@ func (a *ClusterAggregatorActor) startRound(ctx actor_framework.Context, round i
 	a.epochActive = true
 	a.currentRound = round
 
-	fmt.Printf("\n>>> [Aggregator] ZAPOČINJE RUNDA %d od %d <<<\n", a.currentRound, a.maxRounds)
+	fmt.Printf("\n[Aggregator] ZAPOČINJE RUNDA %d od %d \n", a.currentRound, a.maxRounds)
 
 	selfPID := ctx.Self()
 	time.AfterFunc(10*time.Second, func() {
@@ -108,12 +101,10 @@ func (a *ClusterAggregatorActor) finishRound(ctx actor_framework.Context, status
 		globalAverage = a.accumulatedSum / float64(a.accumulatedCount)
 	}
 
-	fmt.Println("\n========================================================")
-	fmt.Printf("[Aggregator] RUNDA %d ZAVRŠENA! Status: %s\n", a.currentRound, status)
-	fmt.Printf("-> Uspešno odgovorilo čvorova: %d od 4\n", a.responsesReceived)
-	fmt.Printf("-> Ukupno uzoraka u ovoj rundi: %d\n", a.accumulatedCount)
-	fmt.Printf("-> GLOBALNI PONDERISANI PROSEK ZA RUNDU %d: %.4f kWh\n", a.currentRound, globalAverage)
-	fmt.Println("========================================================")
+	fmt.Printf("[Aggregator] Runda %d završena! Status: %s\n", a.currentRound, status)
+	fmt.Printf("Uspešno odgovorilo čvorova: %d od 4\n", a.responsesReceived)
+	fmt.Printf("Ukupno uzoraka u ovoj rundi: %d\n", a.accumulatedCount)
+	fmt.Printf("Globalni ponderisani prosek za rundu %d: %.4f kWh\n", a.currentRound, globalAverage)
 
 	for _, trainerPID := range a.trainers {
 		ctx.Send(trainerPID, GlobalModelBroadcast{
@@ -132,7 +123,7 @@ func (a *ClusterAggregatorActor) finishRound(ctx actor_framework.Context, status
 		})
 
 	} else {
-		fmt.Println("\n!!!!! FEDERATED LEARNING PROCES UKUPNO ZAVRŠEN ZA SVE RUNDE !!!!!")
+		fmt.Println("\n!!!!! Federated learning proces ukupno završen za sve runde !!!!!")
 		fmt.Println("Sistem je stabilan. Možete ugasiti klaster sa Ctrl+C.\n")
 
 		filePaths := []string{"data/node1.json", "data/node2.json", "data/node3.json", "data/node4.json"}

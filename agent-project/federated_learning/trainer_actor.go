@@ -33,6 +33,10 @@ func NewFederatedTrainerActor(filePath string) actor_framework.Actor {
 }
 
 func (a *FederatedTrainerActor) Receive(ctx actor_framework.Context) {
+	a.receiveIdle(ctx)
+}
+
+func (a *FederatedTrainerActor) receiveIdle(ctx actor_framework.Context) {
 	switch msg := ctx.Message().(type) {
 
 	case StartTrainingEpoch:
@@ -46,6 +50,23 @@ func (a *FederatedTrainerActor) Receive(ctx actor_framework.Context) {
 
 		log.Printf("[Trainer %s] Započinje RUNDU %d. Aktiviram aktivni nadzor radnika...\n", ctx.Self().ID, msg.Round)
 		a.startWorkerWithSupervision(ctx)
+		ctx.Become(a.receiveTraining)
+
+	case GlobalModelBroadcast:
+		a.applyGlobalModel(ctx, msg)
+
+	case actor_framework.ChildStarted:
+
+	case WorkerTimeout, LocalMetricsUpdate, actor_framework.Failure:
+		log.Printf("[Trainer %s] (mirovanje) Zanemarujem zakasnelu poruku %T od radnika iz prethodne runde.\n", ctx.Self().ID, msg)
+
+	default:
+		log.Printf("[Trainer %s] (mirovanje) Nepoznat tip poruke: %T", ctx.Self().ID, msg)
+	}
+}
+
+func (a *FederatedTrainerActor) receiveTraining(ctx actor_framework.Context) {
+	switch msg := ctx.Message().(type) {
 
 	case LocalMetricsUpdate:
 		if ctx.Sender() != nil && a.workerPID != nil && ctx.Sender().String() == a.workerPID.String() {
@@ -55,6 +76,7 @@ func (a *FederatedTrainerActor) Receive(ctx actor_framework.Context) {
 
 			if a.currentAggregator == nil {
 				log.Printf("[Trainer %s] Greška: Nemam adresu agregatora!\n", ctx.Self().ID)
+				ctx.Become(a.receiveIdle)
 				return
 			}
 
@@ -77,42 +99,58 @@ func (a *FederatedTrainerActor) Receive(ctx actor_framework.Context) {
 				Count:   msg.Count,
 				Round:   msg.Round,
 			})
+
+			ctx.Become(a.receiveIdle)
 		}
 
 	case GlobalModelBroadcast:
-		if msg.Round >= a.currentRound {
-			a.localModelWeight = msg.GlobalAverage
-			fmt.Println("--------------------------------------------------------")
-			log.Printf("[Trainer %s] Lokalni model ažuriran globalnim prosekom: %.4f kWh\n", ctx.Self().ID, a.localModelWeight)
-			fmt.Println("--------------------------------------------------------")
-		}
+		a.applyGlobalModel(ctx, msg)
+
+	case actor_framework.ChildStarted:
 
 	case WorkerTimeout:
 		if msg.Round == a.currentRound && msg.Generation == a.workerGeneration {
-			a.workerGeneration++
-			a.retryCount++
+			a.handleWorkerFailure(ctx, fmt.Sprintf("TIMEOUT nakon 5s u rundi %d", msg.Round))
+		}
 
-			log.Printf("[Trainer %s] ⚠️ TIMEOUT (Pokušaj %d/3) u rundi %d!\n", ctx.Self().ID, a.retryCount, msg.Round)
-
-			if a.retryCount >= 3 {
-				log.Printf("[Trainer %s] ❌ SUPERVIZOR ODUSTAO: Radnik je zakazao 3 puta za redom. Šaljem fallback (0.0) agregatoru da ne blokiram sistem.\n", ctx.Self().ID)
-
-				if a.currentAggregator != nil {
-					ctx.Send(a.currentAggregator, LocalMetricsUpdate{
-						Average: a.localModelWeight,
-						Count:   0,
-						Round:   a.currentRound,
-					})
-				}
-				return
-			}
-
-			log.Printf("[Trainer %s] Supervizor: Pokušavam ponovo podizanje radnika...\n", ctx.Self().ID)
-			a.startWorkerWithSupervision(ctx)
+	case actor_framework.Failure:
+		if a.workerPID != nil && msg.Who.String() == a.workerPID.String() {
+			a.handleWorkerFailure(ctx, fmt.Sprintf("PANIKA radnika: %s", msg.Reason))
 		}
 
 	default:
-		log.Printf("[Trainer %s] Primio nepoznatu poruku: %T", ctx.Self().ID, msg)
+		log.Printf("[Trainer %s] (treniranje) Nepoznat tip poruke: %T", ctx.Self().ID, msg)
+	}
+}
+
+func (a *FederatedTrainerActor) handleWorkerFailure(ctx actor_framework.Context, reason string) {
+	a.workerGeneration++
+	a.retryCount++
+
+	log.Printf("[Trainer %s] RADNIK NIJE USPEO (Pokušaj %d/3, runda %d): %s\n", ctx.Self().ID, a.retryCount, a.currentRound, reason)
+
+	if a.retryCount >= 3 {
+		log.Printf("[Trainer %s] SUPERVIZOR ODUSTAO: Radnik je zakazao 3 puta za redom. Šaljem fallback (0.0) agregatoru da ne blokiram sistem.\n", ctx.Self().ID)
+
+		if a.currentAggregator != nil {
+			ctx.Send(a.currentAggregator, LocalMetricsUpdate{
+				Average: a.localModelWeight,
+				Count:   0,
+				Round:   a.currentRound,
+			})
+		}
+		ctx.Become(a.receiveIdle)
+		return
+	}
+
+	log.Printf("[Trainer %s] Supervizor: Pokušavam ponovo podizanje radnika...\n", ctx.Self().ID)
+	a.startWorkerWithSupervision(ctx)
+}
+
+func (a *FederatedTrainerActor) applyGlobalModel(ctx actor_framework.Context, msg GlobalModelBroadcast) {
+	if msg.Round >= a.currentRound {
+		a.localModelWeight = msg.GlobalAverage
+		log.Printf("[Trainer %s] Lokalni model ažuriran globalnim prosekom: %.4f kWh\n", ctx.Self().ID, a.localModelWeight)
 	}
 }
 

@@ -19,31 +19,10 @@ func RegisterMessageTip(value interface{}) {
 func init() {
 	gob.Register(PID{})
 	gob.Register(NetworkMessage{})
-}
-
-func (s *ActorSystem) StartListening() error {
-	address := s.Address()
-	listener, err := net.Listen("tcp", address)
-	if err != nil {
-		return fmt.Errorf("neuspešno pokretanje mrežnog servera na %s: %w", address, err)
-	}
-
-	fmt.Printf("[NetworkServer] ActorSystem sluša na adresi: %s\n", address)
-
-	go func() {
-		defer listener.Close()
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				fmt.Printf("[NetworkServer] Greška pri prihvatanju konekcije: %v\n", err)
-				continue
-			}
-
-			go s.handleConnection(conn)
-		}
-	}()
-
-	return nil
+	gob.Register(Failure{})
+	gob.Register(ChildStarted{})
+	gob.Register(Restart{})
+	gob.Register(Stop{})
 }
 
 func (s *ActorSystem) handleConnection(conn net.Conn) {

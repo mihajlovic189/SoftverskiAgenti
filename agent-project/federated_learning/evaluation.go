@@ -9,7 +9,7 @@ import (
 )
 
 func EvaluateDistributedResult(finalGlobalAverage float64, filePaths []string) {
-	log.Println("\n--- ZAPOČINJEM CENTRALIZOVANU EVALUACIJU REZULTATA ---")
+	log.Println("\n--- Započinjem centralizovanu evaluaciju rezultata ---")
 
 	var totalSum float64
 	var totalCount int
@@ -47,18 +47,14 @@ func EvaluateDistributedResult(finalGlobalAverage float64, filePaths []string) {
 		accuracyPercentage = (1.0 - (absoluteError / controlAverage)) * 100.0
 	}
 
-	fmt.Println("\n========================================================")
-	fmt.Println("             REZULTATI EVALUACIJE PRORAČUNA             ")
-	fmt.Println("========================================================")
+	fmt.Println("Rezultati evaluacije proračuna")
 	log.Printf("Dobijeni Distribuirani Globalni Prosek: %.4f kWh\n", finalGlobalAverage)
-	log.Printf("Kontrolni Centralizovani Prosek (Sirovo):  %.4f kWh\n", controlAverage)
-	log.Printf("Apsolutno Odstupanje (Greška):            %.4f kWh\n", absoluteError)
-	fmt.Println("--------------------------------------------------------")
+	log.Printf("Kontrolni Centralizovani Prosek (Sirovo): %.4f kWh\n", controlAverage)
+	log.Printf("Apsolutno Odstupanje (Greška): %.4f kWh\n", absoluteError)
 
 	if accuracyPercentage >= 95.0 {
-		log.Printf("🏆 TAČNOST DISTRIBUIRANOG MODELA: %.2f%% (USPEH)\n", accuracyPercentage)
+		log.Printf("Tačnost distribuiranog modela: %.2f%% (USPEH)\n", accuracyPercentage)
 	} else {
-		log.Printf("⚠️ TAČNOST DISTRIBUIRANOG MODELA: %.2f%% (Odstupanje zbog simulacije ispada/timeout-a)\n", accuracyPercentage)
+		log.Printf("Tačnost distribuiranog modela: %.2f%% (Odstupanje zbog simulacije ispada/timeout-a)\n", accuracyPercentage)
 	}
-	fmt.Println("========================================================\n")
 }
