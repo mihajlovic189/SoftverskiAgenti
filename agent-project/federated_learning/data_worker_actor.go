@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"time"
 )
 
 type EnergyReading struct {
@@ -27,10 +26,10 @@ func (a *DataWorkerActor) Receive(ctx actor_framework.Context) {
 		fmt.Printf("[DataWorker %s] Pokrećem računanje za fajl: %s\n", ctx.Self().ID, msg.FilePath)
 
 		// Simulacija zastoja/kašnjenja čvora
-		if msg.FilePath == "data/node1.json" {
-			fmt.Printf("[DataWorker %s] !!! SIMULACIJA !!! Spavam 12 sekundi da bih testirao timeout supervizije...\n", ctx.Self().ID)
-			time.Sleep(12 * time.Second)
-		}
+		// if msg.FilePath == "data/node1.json" {
+		// 	fmt.Printf("[DataWorker %s] !!! SIMULACIJA !!! Spavam 12 sekundi da bih testirao timeout supervizije...\n", ctx.Self().ID)
+		// 	time.Sleep(12 * time.Second)
+		// }
 
 		fileData, err := os.ReadFile(msg.FilePath)
 		if err != nil {
