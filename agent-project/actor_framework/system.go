@@ -16,6 +16,8 @@ type ActorSystem struct {
 
 	connections map[string]pb.ActorTransportClient
 	connMu      sync.Mutex
+
+	cluster *Cluster
 }
 
 func NewActorSystem(address string) *ActorSystem {
@@ -66,6 +68,14 @@ func (s *ActorSystem) localSend(pid *PID, message interface{}, sender *PID) {
 	s.mu.RLock()
 	ref, ok := s.registry[pid.ID]
 	s.mu.RUnlock()
+
+	if !ok && s.cluster != nil {
+		if activated := s.cluster.activateOnArrival(pid.ID); activated != nil {
+			s.mu.RLock()
+			ref, ok = s.registry[pid.ID]
+			s.mu.RUnlock()
+		}
+	}
 
 	if ok {
 		ref.Send(message, sender)

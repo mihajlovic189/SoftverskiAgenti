@@ -1,0 +1,10 @@
+docker compose up --build -d
+docker compose down --remove-orphans -v
+docker compose logs -f aggregator1
+docker compose logs -f aggregator2
+docker compose logs -f trainer1
+docker compose logs -f trainer2
+docker compose logs -f trainer3
+docker compose logs -f trainer4
+docker kill fl-aggregator1
+docker compose start fl-aggregator1

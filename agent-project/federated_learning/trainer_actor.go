@@ -18,7 +18,7 @@ const registerRetryInterval = 10 * time.Second
 
 type FederatedTrainerActor struct {
 	filePath           string
-	aggregatorPID      *actor_framework.PID
+	cluster            *actor_framework.Cluster
 	registered         bool
 	workerPID          *actor_framework.PID
 	currentAggregator  *actor_framework.PID
@@ -30,10 +30,10 @@ type FederatedTrainerActor struct {
 	workerTimeoutTimer *time.Timer
 }
 
-func NewFederatedTrainerActor(filePath string, aggregatorPID *actor_framework.PID) actor_framework.Actor {
+func NewFederatedTrainerActor(filePath string, cluster *actor_framework.Cluster) actor_framework.Actor {
 	return &FederatedTrainerActor{
 		filePath:         filePath,
-		aggregatorPID:    aggregatorPID,
+		cluster:          cluster,
 		localModelWeight: 0.0,
 		currentRound:     0,
 		workerGeneration: 0,
@@ -41,8 +41,18 @@ func NewFederatedTrainerActor(filePath string, aggregatorPID *actor_framework.PI
 	}
 }
 
+// registerWithAggregator razrešava trenutnog vlasnika "Aggregator"
+// grain-a preko klastera (vežbe 5: virtuelni aktor - pošiljalac ne mora
+// da zna FIZIČKI koji je čvor trenutno vlasnik) i šalje mu registraciju.
+// Ponavlja se svakih registerRetryInterval doveka - ako se stari vlasnik
+// ugasi, sledeći poziv Get() ga automatski preusmerava na novog.
 func (a *FederatedTrainerActor) registerWithAggregator(ctx actor_framework.Context) {
-	ctx.Send(a.aggregatorPID, RegisterTrainer{TrainerPID: ctx.Self()})
+	pid := a.cluster.Get(AggregatorKind, AggregatorIdentity)
+	if pid == nil {
+		log.Printf("[Trainer %s] Trenutno nijedan živi kandidat za agregatora - pokušavam ponovo za %v.\n", ctx.Self().ID, registerRetryInterval)
+	} else {
+		ctx.Send(pid, RegisterTrainer{TrainerPID: ctx.Self()})
+	}
 
 	selfPID := ctx.Self()
 	time.AfterFunc(registerRetryInterval, func() {
@@ -75,7 +85,7 @@ func (a *FederatedTrainerActor) receiveIdle(ctx actor_framework.Context) {
 		a.applyGlobalModel(ctx, msg)
 
 	case actor_framework.Started:
-		log.Printf("[Trainer %s] Aktor kreiran (Started). Registrujem se na agregatoru %s...\n", ctx.Self().ID, a.aggregatorPID.String())
+		log.Printf("[Trainer %s] Aktor kreiran (Started). Tražim trenutnog vlasnika Aggregator grain-a preko klastera...\n", ctx.Self().ID)
 		a.registerWithAggregator(ctx)
 
 	case RegisterRetryTick:

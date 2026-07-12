@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package pb;
+
+option go_package = "agent-project/pb";
+
+message ClusterPing {
+  string from = 1;
+}
+
+message ClusterPong {
+  string from = 1;
+}

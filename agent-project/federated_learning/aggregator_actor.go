@@ -6,6 +6,11 @@ import (
 	"time"
 )
 
+const (
+	AggregatorKind     = "Aggregator"
+	AggregatorIdentity = "central-aggregator"
+)
+
 type AggregatorActor struct {
 	trainers          []*actor_framework.PID
 	responsesReceived int
