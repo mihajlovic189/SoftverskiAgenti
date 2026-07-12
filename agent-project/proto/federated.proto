@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package pb;
+
+option go_package = "agent-project/pb";
+
+import "pid.proto";
+
+message StartTrainingEpoch {
+  int32 round = 1;
+  int32 total_rounds = 2;
+}
+
+message GlobalModelBroadcast {
+  double global_average = 1;
+  int32 round = 2;
+}
+
+message CalculateLocalMetrics {
+  string file_path = 1;
+  int32 round = 2;
+  int32 total_rounds = 3;
+}
+
+message LocalMetricsUpdate {
+  double average = 1;
+  int32 count = 2;
+  int32 round = 3;
+}
+
+message RegisterTrainer {
+  PID trainer_pid = 1;
+}
+
+message RegisterAck {
+  bool accepted = 1;
+}
+
+message EpochTimeout {
+  int32 round = 1;
+}

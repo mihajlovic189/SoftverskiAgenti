@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-type ClusterAggregatorActor struct {
+type AggregatorActor struct {
 	trainers          []*actor_framework.PID
 	responsesReceived int
 	accumulatedSum    float64
@@ -21,8 +21,8 @@ type ClusterAggregatorActor struct {
 	lastGlobalAverage float64
 }
 
-func NewClusterAggregatorActor(expectedNodes int, statePath string) *ClusterAggregatorActor {
-	a := &ClusterAggregatorActor{
+func NewAggregatorActor(expectedNodes int, statePath string) *AggregatorActor {
+	a := &AggregatorActor{
 		trainers:          make([]*actor_framework.PID, 0),
 		responsesReceived: 0,
 		accumulatedSum:    0,
@@ -46,28 +46,14 @@ func NewClusterAggregatorActor(expectedNodes int, statePath string) *ClusterAggr
 	return a
 }
 
-func (a *ClusterAggregatorActor) Receive(ctx actor_framework.Context) {
+func (a *AggregatorActor) Receive(ctx actor_framework.Context) {
 	switch msg := ctx.Message().(type) {
 
+	case actor_framework.Started:
+		fmt.Printf("[Aggregator] Aktor kreiran (Started), čekam registraciju %d trenera...\n", a.expectedNodes)
+
 	case RegisterTrainer:
-		if a.started {
-			return
-		}
-
-		a.trainers = append(a.trainers, msg.TrainerPID)
-		fmt.Printf("[Aggregator] Registrovan novi trener: %s (Ukupno: %d/%d)\n", msg.TrainerPID.String(), len(a.trainers), a.expectedNodes)
-
-		if len(a.trainers) == a.expectedNodes {
-			a.started = true
-
-			if a.currentRound > a.maxRounds {
-				fmt.Printf("[Aggregator] Sve runde su već ranije završene (obnovljeno stanje). Nema novog treninga.\n")
-				return
-			}
-
-			fmt.Printf("[Aggregator] SVI ČVOROVI PRISUTNI (%d/%d)! Pokrećem Federated Learning proces od runde %d...\n", len(a.trainers), a.expectedNodes, a.currentRound)
-			a.startRound(ctx, a.currentRound)
-		}
+		a.handleRegisterTrainer(ctx, msg)
 
 	case StartTrainingEpoch:
 		if msg.Round > 1 {
@@ -103,7 +89,38 @@ func (a *ClusterAggregatorActor) Receive(ctx actor_framework.Context) {
 	}
 }
 
-func (a *ClusterAggregatorActor) startRound(ctx actor_framework.Context, round int) {
+func (a *AggregatorActor) handleRegisterTrainer(ctx actor_framework.Context, msg RegisterTrainer) {
+	for _, known := range a.trainers {
+		if known.String() == msg.TrainerPID.String() {
+			ctx.Send(ctx.Sender(), RegisterAck{Accepted: true})
+			return
+		}
+	}
+
+	if a.started {
+		fmt.Printf("[Aggregator] Odbijam kasnu registraciju trenera %s - trening je već u toku.\n", msg.TrainerPID.String())
+		ctx.Send(ctx.Sender(), RegisterAck{Accepted: false})
+		return
+	}
+
+	a.trainers = append(a.trainers, msg.TrainerPID)
+	fmt.Printf("[Aggregator] Registrovan novi trener: %s (Ukupno: %d/%d)\n", msg.TrainerPID.String(), len(a.trainers), a.expectedNodes)
+	ctx.Send(ctx.Sender(), RegisterAck{Accepted: true})
+
+	if len(a.trainers) == a.expectedNodes {
+		a.started = true
+
+		if a.currentRound > a.maxRounds {
+			fmt.Printf("[Aggregator] Sve runde su već ranije završene (obnovljeno stanje). Nema novog treninga.\n")
+			return
+		}
+
+		fmt.Printf("[Aggregator] SVI ČVOROVI PRISUTNI (%d/%d)! Pokrećem Federated Learning proces od runde %d...\n", len(a.trainers), a.expectedNodes, a.currentRound)
+		a.startRound(ctx, a.currentRound)
+	}
+}
+
+func (a *AggregatorActor) startRound(ctx actor_framework.Context, round int) {
 	a.responsesReceived = 0
 	a.accumulatedSum = 0
 	a.accumulatedCount = 0
@@ -122,7 +139,7 @@ func (a *ClusterAggregatorActor) startRound(ctx actor_framework.Context, round i
 	}
 }
 
-func (a *ClusterAggregatorActor) finishRound(ctx actor_framework.Context, status string) {
+func (a *AggregatorActor) finishRound(ctx actor_framework.Context, status string) {
 	a.epochActive = false
 
 	globalAverage := computeGlobalAverage(a.accumulatedSum, a.accumulatedCount)
@@ -171,7 +188,7 @@ func computeGlobalAverage(sum float64, count int) float64 {
 	return sum / float64(count)
 }
 
-func (a *ClusterAggregatorActor) saveState() {
+func (a *AggregatorActor) saveState() {
 	state := AggregatorState{
 		LastCompletedRound: a.currentRound,
 		GlobalAverages:     a.globalAverages,

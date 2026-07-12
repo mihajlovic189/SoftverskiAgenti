@@ -12,8 +12,14 @@ type WorkerTimeout struct {
 	Generation int
 }
 
+type RegisterRetryTick struct{}
+
+const registerRetryInterval = 10 * time.Second
+
 type FederatedTrainerActor struct {
 	filePath           string
+	aggregatorPID      *actor_framework.PID
+	registered         bool
 	workerPID          *actor_framework.PID
 	currentAggregator  *actor_framework.PID
 	localModelWeight   float64
@@ -24,14 +30,24 @@ type FederatedTrainerActor struct {
 	workerTimeoutTimer *time.Timer
 }
 
-func NewFederatedTrainerActor(filePath string) actor_framework.Actor {
+func NewFederatedTrainerActor(filePath string, aggregatorPID *actor_framework.PID) actor_framework.Actor {
 	return &FederatedTrainerActor{
 		filePath:         filePath,
+		aggregatorPID:    aggregatorPID,
 		localModelWeight: 0.0,
 		currentRound:     0,
 		workerGeneration: 0,
 		retryCount:       0,
 	}
+}
+
+func (a *FederatedTrainerActor) registerWithAggregator(ctx actor_framework.Context) {
+	ctx.Send(a.aggregatorPID, RegisterTrainer{TrainerPID: ctx.Self()})
+
+	selfPID := ctx.Self()
+	time.AfterFunc(registerRetryInterval, func() {
+		ctx.Send(selfPID, RegisterRetryTick{})
+	})
 }
 
 func (a *FederatedTrainerActor) Receive(ctx actor_framework.Context) {
@@ -52,11 +68,24 @@ func (a *FederatedTrainerActor) receiveIdle(ctx actor_framework.Context) {
 		a.retryCount = 0
 
 		log.Printf("[Trainer %s] Započinje RUNDU %d. Aktiviram aktivni nadzor radnika...\n", ctx.Self().ID, msg.Round)
-		a.startWorkerWithSupervision(ctx)
+		a.startNewWorker(ctx)
 		ctx.Become(a.receiveTraining)
 
 	case GlobalModelBroadcast:
 		a.applyGlobalModel(ctx, msg)
+
+	case actor_framework.Started:
+		log.Printf("[Trainer %s] Aktor kreiran (Started). Registrujem se na agregatoru %s...\n", ctx.Self().ID, a.aggregatorPID.String())
+		a.registerWithAggregator(ctx)
+
+	case RegisterRetryTick:
+		a.registerWithAggregator(ctx)
+
+	case RegisterAck:
+		if msg.Accepted && !a.registered {
+			a.registered = true
+			log.Printf("[Trainer %s] Registracija na agregatoru potvrđena.\n", ctx.Self().ID)
+		}
 
 	case actor_framework.ChildStarted:
 
@@ -77,13 +106,14 @@ func (a *FederatedTrainerActor) receiveTraining(ctx actor_framework.Context) {
 				ctx.Self().ID, msg.Round, a.currentRound)
 
 			a.stopWorkerTimeoutTimer()
+			a.stopStaleWorker(ctx)
 
 			a.currentRound = msg.Round
 			a.totalRounds = msg.TotalRounds
 			a.currentAggregator = ctx.Sender()
 			a.retryCount = 0
 
-			a.startWorkerWithSupervision(ctx)
+			a.startNewWorker(ctx)
 		}
 
 	case LocalMetricsUpdate:
@@ -119,11 +149,18 @@ func (a *FederatedTrainerActor) receiveTraining(ctx actor_framework.Context) {
 				Round:   msg.Round,
 			})
 
+			a.workerPID = nil
+
 			ctx.Become(a.receiveIdle)
 		}
 
 	case GlobalModelBroadcast:
 		a.applyGlobalModel(ctx, msg)
+
+	case RegisterRetryTick:
+		a.registerWithAggregator(ctx)
+
+	case RegisterAck:
 
 	case actor_framework.ChildStarted:
 
@@ -163,7 +200,7 @@ func (a *FederatedTrainerActor) handleWorkerFailure(ctx actor_framework.Context,
 	}
 
 	log.Printf("[Trainer %s] Supervizor: Pokušavam ponovo podizanje radnika...\n", ctx.Self().ID)
-	a.startWorkerWithSupervision(ctx)
+	a.restartWorker(ctx)
 }
 
 func (a *FederatedTrainerActor) applyGlobalModel(ctx actor_framework.Context, msg GlobalModelBroadcast) {
@@ -173,12 +210,27 @@ func (a *FederatedTrainerActor) applyGlobalModel(ctx actor_framework.Context, ms
 	}
 }
 
-func (a *FederatedTrainerActor) startWorkerWithSupervision(ctx actor_framework.Context) {
+func (a *FederatedTrainerActor) startNewWorker(ctx actor_framework.Context) {
 	workerProps := actor_framework.NewProps(func() actor_framework.Actor {
 		return &DataWorkerActor{}
 	})
-
 	a.workerPID = ctx.Spawn(workerProps)
+	a.armWorker(ctx)
+}
+
+func (a *FederatedTrainerActor) restartWorker(ctx actor_framework.Context) {
+	ctx.Send(a.workerPID, actor_framework.Restart{})
+	a.armWorker(ctx)
+}
+
+func (a *FederatedTrainerActor) stopStaleWorker(ctx actor_framework.Context) {
+	if a.workerPID != nil {
+		ctx.Send(a.workerPID, actor_framework.Stop{})
+		a.workerPID = nil
+	}
+}
+
+func (a *FederatedTrainerActor) armWorker(ctx actor_framework.Context) {
 	currentGen := a.workerGeneration
 
 	ctx.Send(a.workerPID, CalculateLocalMetrics{

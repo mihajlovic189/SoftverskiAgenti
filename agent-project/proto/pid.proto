@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package pb;
+
+option go_package = "agent-project/pb";
+
+message PID {
+  string address = 1;
+  string id = 2;
+  PID parent = 3;
+}

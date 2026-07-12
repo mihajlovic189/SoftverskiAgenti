@@ -46,6 +46,7 @@ func (a *DataWorkerActor) Receive(ctx actor_framework.Context) {
 		totalReadings := len(smd.Readings)
 		if totalReadings == 0 {
 			ctx.Send(ctx.Sender(), LocalMetricsUpdate{Average: 0, Count: 0, Round: msg.Round})
+			ctx.Send(ctx.Self(), actor_framework.Stop{})
 			return
 		}
 
@@ -88,5 +89,7 @@ func (a *DataWorkerActor) Receive(ctx actor_framework.Context) {
 			Count:   count,
 			Round:   msg.Round,
 		})
+
+		ctx.Send(ctx.Self(), actor_framework.Stop{})
 	}
 }

@@ -33,7 +33,7 @@ func main() {
 
 		system := actor_framework.NewActorSystem(*publicAddr)
 
-		aggActor := federated_learning.NewClusterAggregatorActor(*expectedNodes, *stateFile)
+		aggActor := federated_learning.NewAggregatorActor(*expectedNodes, *stateFile)
 
 		props := actor_framework.NewProps(func() actor_framework.Actor {
 			return aggActor
@@ -60,20 +60,19 @@ func main() {
 
 		system := actor_framework.NewActorSystem(*publicAddr)
 
+		aggregatorPID := actor_framework.NewPID(*aggAddress, fixedAggregatorID)
+
 		props := actor_framework.NewProps(func() actor_framework.Actor {
-			return federated_learning.NewFederatedTrainerActor(*nodeFile)
+			return federated_learning.NewFederatedTrainerActor(*nodeFile, aggregatorPID)
 		})
-		trainerPID := system.Spawn(props)
+		system.Spawn(props)
 
 		err := system.StartListeningOn(*listenAddr)
 		if err != nil {
 			panic(err)
 		}
 
-		aggregatorPID := actor_framework.NewPID(*aggAddress, fixedAggregatorID)
-
-		fmt.Printf("[Trainer] Automatska registracija na agregator: %s\n", aggregatorPID.String())
-		system.Send(aggregatorPID, federated_learning.RegisterTrainer{TrainerPID: trainerPID}, nil)
+		fmt.Printf("[Trainer] Pokrenut. Aktor se sam registruje (i periodično re-registruje) na agregatoru %s preko lifecycle Started poruke - otporno na restart agregatora.\n", aggregatorPID.String())
 
 		select {}
 	}

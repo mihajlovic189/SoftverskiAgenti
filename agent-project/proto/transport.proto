@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package pb;
+
+option go_package = "agent-project/pb";
+
+import "pid.proto";
+import "google/protobuf/any.proto";
+
+message Envelope {
+  PID target = 1;
+  PID sender = 2;
+  google.protobuf.Any payload = 3;
+}
+
+message Ack {
+  bool ok = 1;
+  string error = 2;
+}
+
+service ActorTransport {
+  rpc Send(Envelope) returns (Ack);
+}

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync"
 
+	"agent-project/pb"
+
 	"github.com/google/uuid"
 )
 
@@ -12,7 +14,7 @@ type ActorSystem struct {
 	registry map[string]ActorRef
 	mu       sync.RWMutex
 
-	connections map[string]*remoteClient
+	connections map[string]pb.ActorTransportClient
 	connMu      sync.Mutex
 }
 
@@ -20,7 +22,7 @@ func NewActorSystem(address string) *ActorSystem {
 	return &ActorSystem{
 		address:     address,
 		registry:    make(map[string]ActorRef),
-		connections: make(map[string]*remoteClient),
+		connections: make(map[string]pb.ActorTransportClient),
 	}
 }
 
@@ -42,6 +44,7 @@ func (s *ActorSystem) SpawnChild(props *Props, parent *PID) *PID {
 	proc := newProcess(pid, props, s)
 	s.registry[id] = proc
 
+	proc.Send(Started{}, nil)
 	proc.start()
 
 	s.mu.Unlock()
@@ -95,6 +98,7 @@ func (s *ActorSystem) SpawnNamed(props *Props, name string) *PID {
 	proc := newProcess(pid, props, s)
 	s.registry[name] = proc
 
+	proc.Send(Started{}, nil)
 	proc.start()
 
 	return pid

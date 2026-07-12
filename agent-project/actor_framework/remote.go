@@ -1,90 +1,31 @@
 package actor_framework
 
 import (
-	"encoding/gob"
+	"context"
 	"fmt"
 	"net"
+	"time"
+
+	"agent-project/pb"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
-type NetworkMessage struct {
-	TargetPID *PID
-	SenderPID *PID
-	Payload   interface{}
+type transportServer struct {
+	pb.UnimplementedActorTransportServer
+	system *ActorSystem
 }
 
-func RegisterMessageTip(value interface{}) {
-	gob.Register(value)
-}
-
-func init() {
-	gob.Register(PID{})
-	gob.Register(NetworkMessage{})
-	gob.Register(Failure{})
-	gob.Register(ChildStarted{})
-	gob.Register(Restart{})
-	gob.Register(Stop{})
-	gob.Register(DeadLetter{})
-}
-
-func (s *ActorSystem) handleConnection(conn net.Conn) {
-	defer conn.Close()
-
-	decoder := gob.NewDecoder(conn)
-
-	for {
-		var netMsg NetworkMessage
-		err := decoder.Decode(&netMsg)
-		if err != nil {
-			if err.Error() != "EOF" {
-				fmt.Printf("[NetworkServer] Greška pri dekodiranju poruke: %v\n", err)
-			}
-			break
-		}
-
-		s.localSend(netMsg.TargetPID, netMsg.Payload, netMsg.SenderPID)
-	}
-}
-
-func (s *ActorSystem) sendRemote(targetPID *PID, message interface{}, sender *PID) {
-	s.connMu.Lock()
-	client, exists := s.connections[targetPID.Address]
-	var err error
-
-	if !exists {
-		fmt.Printf("[NetworkClient] Otvaram novu TCP konekciju ka %s...\n", targetPID.Address)
-		conn, err := net.Dial("tcp", targetPID.Address)
-		if err != nil {
-			fmt.Printf("[NetworkClient] Greška pri povezivanju na %s: %v\n", targetPID.Address, err)
-			s.connMu.Unlock()
-			return
-		}
-
-		encoder := gob.NewEncoder(conn)
-
-		client = &remoteClient{
-			conn:    conn,
-			encoder: encoder,
-		}
-
-		s.connections[targetPID.Address] = client
-	}
-	s.connMu.Unlock()
-
-	netMsg := NetworkMessage{
-		TargetPID: targetPID,
-		SenderPID: sender,
-		Payload:   message,
-	}
-
-	err = client.encoder.Encode(netMsg)
+func (s *transportServer) Send(ctx context.Context, env *pb.Envelope) (*pb.Ack, error) {
+	msg, err := DecodeMessage(env.Payload)
 	if err != nil {
-		fmt.Printf("[NetworkClient] Greška pri slanju poruke ka %s: %v\n", targetPID.Address, err)
-
-		s.connMu.Lock()
-		client.conn.Close()
-		delete(s.connections, targetPID.Address)
-		s.connMu.Unlock()
+		fmt.Printf("[NetworkServer] Greška pri dekodiranju poruke: %v\n", err)
+		return &pb.Ack{Ok: false, Error: err.Error()}, nil
 	}
+
+	s.system.localSend(PidFromProto(env.Target), msg, PidFromProto(env.Sender))
+	return &pb.Ack{Ok: true}, nil
 }
 
 func (s *ActorSystem) StartListeningOn(addr string) error {
@@ -92,18 +33,69 @@ func (s *ActorSystem) StartListeningOn(addr string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("[NetworkServer] ActorSystem sluša na lokalnoj adresi: %s\n", addr)
+
+	grpcServer := grpc.NewServer()
+	pb.RegisterActorTransportServer(grpcServer, &transportServer{system: s})
+
+	fmt.Printf("[NetworkServer] ActorSystem sluša (gRPC) na lokalnoj adresi: %s\n", addr)
 
 	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				fmt.Printf("[NetworkServer] Greška pri prihvatanju konekcije: %v\n", err)
-				continue
-			}
-			go s.handleConnection(conn)
+		if err := grpcServer.Serve(listener); err != nil {
+			fmt.Printf("[NetworkServer] gRPC server je stao: %v\n", err)
 		}
 	}()
 
 	return nil
+}
+
+func (s *ActorSystem) getOrDialClient(address string) (pb.ActorTransportClient, error) {
+	s.connMu.Lock()
+	defer s.connMu.Unlock()
+
+	if client, ok := s.connections[address]; ok {
+		return client, nil
+	}
+
+	fmt.Printf("[NetworkClient] Otvaram novu gRPC konekciju ka %s...\n", address)
+
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, err
+	}
+
+	client := pb.NewActorTransportClient(conn)
+	s.connections[address] = client
+	return client, nil
+}
+
+func (s *ActorSystem) sendRemote(targetPID *PID, message interface{}, sender *PID) {
+	client, err := s.getOrDialClient(targetPID.Address)
+	if err != nil {
+		fmt.Printf("[NetworkClient] Greška pri povezivanju na %s: %v\n", targetPID.Address, err)
+		return
+	}
+
+	payload, err := EncodeMessage(message)
+	if err != nil {
+		fmt.Printf("[NetworkClient] Greška pri serijalizaciji poruke %T: %v\n", message, err)
+		return
+	}
+
+	env := &pb.Envelope{
+		Target:  PidToProto(targetPID),
+		Sender:  PidToProto(sender),
+		Payload: payload,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	ack, err := client.Send(ctx, env)
+	if err != nil {
+		fmt.Printf("[NetworkClient] Greška pri slanju poruke ka %s: %v\n", targetPID.Address, err)
+		return
+	}
+	if !ack.Ok {
+		fmt.Printf("[NetworkClient] Udaljeni sistem je odbio poruku ka %s: %s\n", targetPID.Address, ack.Error)
+	}
 }

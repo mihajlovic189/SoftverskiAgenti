@@ -1,9 +1,7 @@
 package actor_framework
 
 import (
-	"encoding/gob"
 	"fmt"
-	"net"
 )
 
 type Actor interface {
@@ -88,6 +86,7 @@ func (p *process) start() {
 				fmt.Printf("[ActorSystem] Aktor %s se restartuje (Restart poruka).\n", p.pid.ID)
 				p.actor = p.props.producer()
 				p.behavior = nil
+				p.dispatch(messageEnvelope{message: Started{}})
 			default:
 				p.dispatch(envelope)
 			}
@@ -152,11 +151,6 @@ func (ctx *actorContext) Become(behavior ReceiveFunc) {
 	ctx.proc.behavior = behavior
 }
 
-type remoteClient struct {
-	conn    net.Conn
-	encoder *gob.Encoder
-}
-
 type Failure struct {
 	Who      *PID
 	Reason   string
@@ -166,6 +160,8 @@ type Failure struct {
 type ChildStarted struct {
 	Child *PID
 }
+
+type Started struct{}
 
 type Restart struct{}
 
